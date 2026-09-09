@@ -1,0 +1,73 @@
+CHAPA ID - ONLINE GRATIS
+========================
+
+Esta versão usa EXATAMENTE o mesmo modelo do projeto BI Operacional:
+
+Cloudflare Quick Tunnel
+sem conta
+sem cartão
+sem token
+sem configuração manual
+sem regra de Firewall
+sem Administrador
+
+COMO USAR
+---------
+
+Execute somente:
+
+EXECUTAR_CHAPA_ID.bat
+
+O sistema faz tudo:
+
+1. encontra/cria o ambiente Python;
+2. instala somente dependências ausentes;
+3. prepara o frontend;
+4. escolhe automaticamente uma porta livre;
+5. sobe o CHAPA ID apenas em 127.0.0.1;
+6. reutiliza o cloudflared do BI Operacional quando disponível;
+7. caso contrário, baixa o cloudflared portátil;
+8. cria automaticamente o Quick Tunnel;
+9. mostra a URL HTTPS;
+10. abre o navegador;
+11. salva a URL em ENDERECO_ONLINE.txt.
+
+VÁRIOS PROJETOS AO MESMO TEMPO
+-------------------------------
+
+Não existe porta fixa.
+
+O CHAPA ID procura uma porta livre entre:
+
+8100 e 8200
+
+Exemplo:
+
+BI Operacional   -> 8000
+CHAPA ID         -> 8100
+Outro projeto    -> 8101
+Outro projeto    -> 8102
+
+Cada execução do cloudflared cria sua própria URL HTTPS.
+
+Portanto os projetos não disputam a mesma porta e não compartilham o mesmo Tunnel.
+
+ACESSO
+------
+
+O usuário e senha do CHAPA ID são criados automaticamente na primeira execução
+e ficam em:
+
+ACESSO_CHAPA_ID.txt
+
+A URL fica em:
+
+ENDERECO_ONLINE.txt
+
+IMPORTANTE
+----------
+
+Mantenha EXECUTAR_CHAPA_ID.bat aberto enquanto estiver usando o sistema.
+
+Para encerrar:
+CTRL+C

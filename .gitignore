@@ -1,0 +1,74 @@
+# ==============================
+# CHAPA ID - arquivos locais
+# ==============================
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Bancos locais
+*.sqlite
+*.sqlite3
+*.db
+backend/data/*.sqlite
+backend/data/*.sqlite3
+backend/data/*.db
+
+# Credenciais / variaveis de ambiente
+.env
+.env.*
+*.env
+*.key
+*.pem
+*credentials*
+*secret*
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+
+# IDE / Sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs e temporarios
+*.log
+*.tmp
+*.temp
+*.bak
+~$*
+
+# Cache
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Cloudflare local
+.cloudflared/
+
+# Dados locais do CHAPA ID
+backend/data/auth.json
+backend/data/images/
+backend/data/uploads/
+backend/data/catalog/
+backend/data/*.json
+
+# Binarios locais
+tools/*.exe
+*.exe
+
+# Arquivos de acesso temporario
+ACESSO_CHAPA_ID.txt
+ENDERECO_ONLINE.txt
