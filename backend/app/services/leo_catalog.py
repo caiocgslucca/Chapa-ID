@@ -584,10 +584,65 @@ def download_image(url:str,target:Path)->None:
     if len(raw)<500:raise ValueError("Imagem recebida está vazia ou inválida.")
     target.write_bytes(raw)
 
-def _find_browser_executable()->str|None:
-    candidates=[os.environ.get("CHAPA_ID_BROWSER"),r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),r"C:\Program Files\Google\Chrome\Application\chrome.exe",r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe")]
-    for p in candidates:
-        if p and Path(p).exists():return p
+def _find_browser_executable() -> str | None:
+    # 1. Caminho configurado manualmente
+    env_browser = os.environ.get("CHAPA_ID_BROWSER")
+    if env_browser and Path(env_browser).exists():
+        return env_browser
+
+    # 2. Windows - mantém funcionamento atual
+    windows_candidates = [
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        os.path.expandvars(
+            r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"
+        ),
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        os.path.expandvars(
+            r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"
+        ),
+    ]
+
+    for candidate in windows_candidates:
+        if candidate and Path(candidate).exists():
+            return candidate
+
+    # 3. Linux / Railway - Chromium do sistema
+    linux_candidates = [
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+    ]
+
+    for candidate in linux_candidates:
+        if Path(candidate).exists():
+            return candidate
+
+    # 4. Chromium instalado pelo Playwright no Docker
+    playwright_roots = [
+        Path("/ms-playwright"),
+        Path.home() / ".cache" / "ms-playwright",
+    ]
+
+    for root in playwright_roots:
+        if not root.exists():
+            continue
+
+        patterns = [
+            "chromium-*/chrome-linux/chrome",
+            "chromium-*/chrome-linux64/chrome",
+            "chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
+            "chromium_headless_shell-*/chrome-linux/headless_shell",
+        ]
+
+        for pattern in patterns:
+            matches = sorted(root.glob(pattern))
+
+            if matches:
+                return str(matches[-1])
+
     return None
 
 def _parse_expected_count(text:str)->int:
