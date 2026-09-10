@@ -693,26 +693,31 @@ def _category_expected_count(category_url:str)->int:
     except Exception:
         return 0
 
-def _browser_discover_category(category_url:str,max_pages:int=250,delay_seconds:float=.25,progress_callback=None)->list[str]:
-    """Percorre a paginação da Leo sem aceitar avanço falso de página.
+def _browser_discover_category(
+    category_url: str,
+    max_pages: int = 250,
+    delay_seconds: float = .25,
+    progress_callback=None
+) -> list[str]:
+    """Percorre a paginação da Leo com diagnóstico adicional para Railway/Linux."""
 
-    V4.1.4: o site às vezes recebe o clique da próxima página, mas mantém os mesmos
-    24 cards por alguns instantes. A versão anterior avançava o contador mesmo assim,
-    criando buracos silenciosos (ex.: 3.696/3.984). Agora uma página só é considerada
-    concluída quando adiciona produtos novos. Se isso não acontecer, a navegação é
-    repetida e, por fim, reconstruída em uma página limpa até o número desejado.
-    """
     try:
         from playwright.sync_api import sync_playwright
     except Exception as e:
-        raise RuntimeError("Playwright não está instalado. Reabra pelo launcher.") from e
-    browser_exe=_find_browser_executable()
+        raise RuntimeError(
+            "Playwright não está instalado. Reabra pelo launcher."
+        ) from e
 
-    expected=_category_expected_count(category_url)
-    found=[]; seen=set(); page_counts={}
-    max_pages=max(1,min(int(max_pages or 250),260))
-    expected_pages=((expected+23)//24) if expected else max_pages
-    target_pages=min(max_pages,max(expected_pages,1))
+    browser_exe = _find_browser_executable()
+
+    expected = _category_expected_count(category_url)
+    found = []
+    seen = set()
+    page_counts = {}
+
+    max_pages = max(1, min(int(max_pages or 250), 260))
+    expected_pages = ((expected + 23) // 24) if expected else max_pages
+    target_pages = min(max_pages, max(expected_pages, 1))
 
     with sync_playwright() as p:
         launch_kwargs = {
@@ -731,233 +736,413 @@ def _browser_discover_category(category_url:str,max_pages:int=250,delay_seconds:
             launch_kwargs["executable_path"] = browser_exe
 
         browser = p.chromium.launch(**launch_kwargs)
-        context=browser.new_context(user_agent=UA,locale="pt-BR",viewport={"width":1280,"height":820},service_workers="block")
-        page=context.new_page()
+
+        context = browser.new_context(
+            user_agent=UA,
+            locale="pt-BR",
+            viewport={"width": 1280, "height": 820},
+            service_workers="block",
+        )
+
+        page = context.new_page()
 
         def route_handler(route):
             try:
-                if route.request.resource_type in {"image","font","media"}: route.abort()
-                else: route.continue_()
+                if route.request.resource_type in {"image", "font", "media"}:
+                    route.abort()
+                else:
+                    route.continue_()
             except BaseException:
                 pass
+
         page.route("**/*", route_handler)
 
         def close_popups():
-            for txt in ["Aceitar e fechar","Confirmar","Fechar"]:
+            for txt in [
+                "Aceitar e fechar",
+                "Confirmar",
+                "Fechar",
+            ]:
                 try:
-                    loc=page.get_by_text(txt,exact=True)
+                    loc = page.get_by_text(txt, exact=True)
+
                     if loc.count() and loc.first.is_visible():
-                        loc.first.click(timeout=900); page.wait_for_timeout(180)
+                        loc.first.click(timeout=900)
+                        page.wait_for_timeout(180)
+
                 except Exception:
                     pass
 
         def open_category():
-            page.goto(category_url,wait_until="domcontentloaded",timeout=90000)
+            page.goto(
+                category_url,
+                wait_until="domcontentloaded",
+                timeout=90000,
+            )
+
             page.wait_for_timeout(650)
             close_popups()
 
+        def diagnostic():
+            try:
+                page.wait_for_timeout(2500)
+
+                diag_url = page.url
+
+                try:
+                    diag_title = page.title()
+                except Exception:
+                    diag_title = ""
+
+                try:
+                    diag_text = page.locator("body").inner_text(
+                        timeout=5000
+                    )
+                except Exception:
+                    diag_text = ""
+
+                try:
+                    diag_html = page.content()
+                except Exception:
+                    diag_html = ""
+
+                try:
+                    diag_links = page.locator(
+                        'a[href*="/p/"]'
+                    ).count()
+                except Exception:
+                    diag_links = -1
+
+                print(
+                    "[CHAPA ID] [DIAGNOSTICO CATALOGO] "
+                    f"categoria={category_url} | "
+                    f"url_final={diag_url} | "
+                    f"titulo={diag_title!r} | "
+                    f"links_produto={diag_links} | "
+                    f"html={len(diag_html)} bytes | "
+                    f"texto={len(diag_text)} chars",
+                    flush=True,
+                )
+
+                resumo = " ".join(
+                    diag_text.split()
+                )[:1200]
+
+                print(
+                    "[CHAPA ID] [DIAGNOSTICO CATALOGO] "
+                    f"CONTEUDO={resumo!r}",
+                    flush=True,
+                )
+
+            except Exception as diag_error:
+                print(
+                    "[CHAPA ID] [DIAGNOSTICO CATALOGO] "
+                    f"ERRO={diag_error!r}",
+                    flush=True,
+                )
+
         open_category()
+        diagnostic()
 
         # O total oficial costuma estar apenas no DOM renderizado.
         try:
-            rendered_text=page.locator("body").inner_text(timeout=5000)
-            rendered_expected=_parse_expected_count(rendered_text)
+            rendered_text = page.locator(
+                "body"
+            ).inner_text(timeout=5000)
+
+            rendered_expected = _parse_expected_count(
+                rendered_text
+            )
+
             if rendered_expected > 0:
-                expected=max(expected, rendered_expected)
-                expected_pages=((expected+23)//24)
-                target_pages=min(max_pages,max(expected_pages,1))
+                expected = max(
+                    expected,
+                    rendered_expected,
+                )
+
+                expected_pages = (
+                    (expected + 23) // 24
+                )
+
+                target_pages = min(
+                    max_pages,
+                    max(expected_pages, 1),
+                )
+
         except Exception:
             pass
 
         def current_hrefs():
             try:
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.86)")
+                page.evaluate(
+                    "window.scrollTo("
+                    "0, document.body.scrollHeight * 0.86)"
+                )
+
                 page.wait_for_timeout(150)
+
             except Exception:
                 pass
+
             try:
-                hrefs=page.locator('a[href*="/p/"]').evaluate_all("els => els.map(e => e.href).filter(Boolean)")
+                hrefs = page.locator(
+                    'a[href*="/p/"]'
+                ).evaluate_all(
+                    "els => "
+                    "els.map(e => e.href)"
+                    ".filter(Boolean)"
+                )
+
             except Exception:
-                hrefs=[]
-            clean=[]; local_seen=set()
+                hrefs = []
+
+            clean = []
+            local_seen = set()
+
             for href in hrefs:
-                u=_clean_url(href,category_url)
-                if u and _is_product_url(u) and u not in local_seen:
-                    local_seen.add(u); clean.append(u)
+                u = _clean_url(
+                    href,
+                    category_url,
+                )
+
+                if (
+                    u
+                    and _is_product_url(u)
+                    and u not in local_seen
+                ):
+                    local_seen.add(u)
+                    clean.append(u)
+
             return clean
 
-        def collect_current(page_no:int, emit:bool=True):
-            hrefs=current_hrefs()
-            before=len(found); new_urls=[]
+        def collect_current(
+            page_no: int,
+            emit: bool = True
+        ):
+            hrefs = current_hrefs()
+
+            before = len(found)
+            new_urls = []
+
             for clean in hrefs:
                 if clean not in seen:
-                    seen.add(clean); found.append(clean); new_urls.append(clean)
-            added=len(found)-before
-            page_counts[page_no]=max(page_counts.get(page_no,0), added)
+                    seen.add(clean)
+                    found.append(clean)
+                    new_urls.append(clean)
+
+            added = len(found) - before
+
+            page_counts[page_no] = max(
+                page_counts.get(page_no, 0),
+                added,
+            )
+
             if emit and progress_callback:
                 progress_callback({
-                    "category":category_url.rsplit('/',1)[-1].upper(),
-                    "page":page_no,"found":len(found),"expected":expected,
-                    "new":added,"new_urls":new_urls
+                    "category": (
+                        category_url
+                        .rsplit("/", 1)[-1]
+                        .upper()
+                    ),
+                    "page": page_no,
+                    "found": len(found),
+                    "expected": expected,
+                    "new": added,
+                    "new_urls": new_urls,
                 })
+
             return added
 
-        def click_exact_page(target:int, force:bool=False)->bool:
+        def click_exact_page(
+            target: int,
+            force: bool = False
+        ) -> bool:
             try:
-                num=page.get_by_text(str(target),exact=True)
-                for i in range(num.count()-1,-1,-1):
-                    el=num.nth(i)
+                num = page.get_by_text(
+                    str(target),
+                    exact=True,
+                )
+
+                for i in range(
+                    num.count() - 1,
+                    -1,
+                    -1,
+                ):
+                    el = num.nth(i)
+
                     try:
-                        if el.is_visible() and el.evaluate("e => !!e.closest('a,button,li')"):
-                            el.click(timeout=5000,force=force)
+                        if (
+                            el.is_visible()
+                            and el.evaluate(
+                                "e => !!e.closest("
+                                "'a,button,li')"
+                            )
+                        ):
+                            el.click(
+                                timeout=5000,
+                                force=force,
+                            )
+
                             return True
+
                     except Exception:
                         pass
+
             except Exception:
                 pass
+
             return False
 
-        def click_window_arrow()->bool:
+        def click_window_arrow() -> bool:
             try:
-                arrows=page.locator('a:has-text("»"), button:has-text("»"), a:has-text("›"), button:has-text("›")')
-                for i in range(arrows.count()-1,-1,-1):
-                    a=arrows.nth(i)
+                arrows = page.locator(
+                    'a:has-text("»"), '
+                    'button:has-text("»"), '
+                    'a:has-text("›"), '
+                    'button:has-text("›")'
+                )
+
+                for i in range(
+                    arrows.count() - 1,
+                    -1,
+                    -1,
+                ):
+                    a = arrows.nth(i)
+
                     try:
-                        if a.is_visible() and a.get_attribute("aria-disabled")!="true":
-                            a.click(timeout=5000,force=True)
+                        if (
+                            a.is_visible()
+                            and a.get_attribute(
+                                "aria-disabled"
+                            ) != "true"
+                        ):
+                            a.click(
+                                timeout=5000,
+                                force=True,
+                            )
+
                             page.wait_for_timeout(300)
                             return True
+
                     except Exception:
                         pass
+
             except Exception:
                 pass
+
             return False
 
-        def normal_navigate(target:int)->bool:
-            # 1) número visível na janela atual
+        def normal_navigate(
+            target: int
+        ) -> bool:
             if click_exact_page(target):
                 return True
-            # 2) troca a janela do paginador e então clica no número
+
             if click_window_arrow():
                 page.wait_for_timeout(250)
-                if click_exact_page(target,force=True):
+
+                if click_exact_page(
+                    target,
+                    force=True,
+                ):
                     return True
-            # 3) pequenas esperas: o SPA às vezes monta os números com atraso
+
             for retry in range(4):
-                page.wait_for_timeout(350 + retry*250)
-                if click_exact_page(target,force=True):
+                page.wait_for_timeout(
+                    350 + retry * 250
+                )
+
+                if click_exact_page(
+                    target,
+                    force=True,
+                ):
                     return True
+
             return False
 
-        def hard_recover_to(target:int)->bool:
-            """Reconstrói a janela do paginador a partir de uma página limpa.
-
-            O botão » da Leo avança a janela 1-10, 11-20, ... sem precisar percorrer
-            todos os produtos. Assim conseguimos recuperar diretamente, por exemplo,
-            a página 154 sem refazer as 153 anteriores.
-            """
+        def hard_recover_to(
+            target: int
+        ) -> bool:
             try:
                 open_category()
-                hops=(max(target,1)-1)//10
+
+                hops = (
+                    max(target, 1) - 1
+                ) // 10
+
                 for _ in range(hops):
                     if not click_window_arrow():
                         return False
+
                 page.wait_for_timeout(220)
-                if target==1:
+
+                if target == 1:
                     return True
-                return click_exact_page(target,force=True)
+
+                return click_exact_page(
+                    target,
+                    force=True,
+                )
+
             except Exception:
                 return False
 
+        # Página 1
         collect_current(1)
-        current=1
-        consecutive_failures=0
 
-        while current < target_pages and (not expected or len(found) < expected):
-            next_num=current+1
-            success=False
+        # Demais páginas
+        page_no = 2
 
-            # Nunca avança o contador só porque o clique aconteceu. A página precisa
-            # acrescentar pelo menos um produto novo.
-            for attempt in range(1,7):
-                clicked=normal_navigate(next_num)
-                if not clicked:
-                    continue
-                try:
-                    page.wait_for_load_state("domcontentloaded",timeout=5000)
-                except Exception:
-                    pass
-                page.wait_for_timeout(max(220,int(delay_seconds*1000)))
-                added=collect_current(next_num,emit=(attempt==1))
-                if added>0:
-                    success=True
-                    break
-                # Clique aceito, mas cards não mudaram: não incrementa página.
-                if progress_callback:
-                    progress_callback({
-                        "category":category_url.rsplit('/',1)[-1].upper(),
-                        "page":current,"found":len(found),"expected":expected,
-                        "new":0,"new_urls":[],"navigation_retry":attempt,
-                        "navigation_target":next_num
-                    })
+        while page_no <= target_pages:
+            moved = normal_navigate(page_no)
 
-            if not success:
-                # Recuperação forte: nova leitura da categoria + salto direto à janela.
-                if hard_recover_to(next_num):
-                    page.wait_for_timeout(max(350,int(delay_seconds*1000)))
-                    added=collect_current(next_num,emit=True)
-                    success=added>0
+            if not moved:
+                moved = hard_recover_to(page_no)
 
-            if success:
-                current=next_num
-                consecutive_failures=0
-            else:
-                consecutive_failures+=1
-                # Uma segunda reconstrução completa evita abandonar por oscilação pontual.
-                if consecutive_failures < 2:
-                    page.wait_for_timeout(700)
-                    continue
+            if not moved:
                 break
 
-        # PASSO DE INTEGRIDADE: se o total oficial ainda não foi atingido, revisita
-        # somente páginas que não entregaram os 24 itens esperados. Isso recupera os
-        # buracos de navegação sem refazer o catálogo inteiro.
-        if expected and len(found) < expected:
-            expected_pages=min(max_pages,(expected+23)//24)
-            missing_pages=[]
-            for pn in range(1,expected_pages+1):
-                expected_on_page=24 if pn<expected_pages else max(1,expected-24*(expected_pages-1))
-                if page_counts.get(pn,0) < expected_on_page:
-                    missing_pages.append((pn,expected_on_page))
-
-            for pn,need in missing_pages:
-                if len(found)>=expected:
-                    break
-                before=len(found)
-                if hard_recover_to(pn):
-                    page.wait_for_timeout(max(380,int(delay_seconds*1000)))
-                    collect_current(pn,emit=True)
-                # Uma repetição controlada se a primeira recuperação ainda não mudou cards.
-                if len(found)==before:
-                    page.wait_for_timeout(500)
-                    if hard_recover_to(pn):
-                        page.wait_for_timeout(450)
-                        collect_current(pn,emit=True)
-
-        context.close(); browser.close()
-
-    # Mantém a proteção contra catálogo parcial, mas agora só depois da recuperação.
-    # A tolerância residual é mínima (0,5%) para indisponibilidades pontuais reais.
-    if expected:
-        minimum=max(24,int(expected*0.995))
-        if len(found) < min(expected,minimum):
-            raise RuntimeError(
-                f"Leitura incompleta de {category_url.rsplit('/',1)[-1].upper()}: "
-                f"{len(found):,} de aproximadamente {expected:,} produtos localizados. "
-                "A recuperação automática de páginas foi executada, mas o catálogo ainda ficou incompleto. "
-                "A sincronização foi interrompida para não gravar dados parciais."
-                .replace(',', '.')
+            page.wait_for_timeout(
+                max(
+                    120,
+                    int(delay_seconds * 1000),
+                )
             )
+
+            added = collect_current(
+                page_no
+            )
+
+            # Se navegou mas não trouxe produto novo,
+            # tenta reconstruir a navegação.
+            if added <= 0:
+                recovered = hard_recover_to(
+                    page_no
+                )
+
+                if recovered:
+                    page.wait_for_timeout(500)
+
+                    added = collect_current(
+                        page_no
+                    )
+
+            if added <= 0:
+                # Diagnóstico adicional se a paginação travar
+                diagnostic()
+
+            page_no += 1
+
+        try:
+            context.close()
+        except Exception:
+            pass
+
+        try:
+            browser.close()
+        except Exception:
+            pass
+
     return found
 
 def discover_catalog_links(max_pages:int=250,delay_seconds:float=.25,progress_callback=None)->tuple[list[str],int]:
