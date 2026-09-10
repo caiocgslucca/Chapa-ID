@@ -203,14 +203,23 @@ class RenderedProductSession:
         except Exception as e:
             raise RuntimeError("Playwright não está instalado. Reabra o CHAPA ID pelo launcher.") from e
         browser_exe = _find_browser_executable()
-        if not browser_exe:
-            raise RuntimeError("Microsoft Edge ou Google Chrome não foi encontrado.")
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(
-            executable_path=browser_exe,
-            headless=True,
-            args=["--disable-gpu", "--no-first-run", "--disable-background-networking"],
-        )
+
+        launch_kwargs = {
+            "headless": True,
+            "args": [
+                "--disable-gpu",
+                "--no-first-run",
+                "--disable-background-networking",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        }
+
+        if browser_exe:
+            launch_kwargs["executable_path"] = browser_exe
+
+        self._browser = self._pw.chromium.launch(**launch_kwargs)
         self._context = self._browser.new_context(
             user_agent=UA, locale="pt-BR", viewport={"width": 1440, "height": 1050}
         )
@@ -447,8 +456,6 @@ async def _extract_rendered_product_async(page, product_url: str, timeout_ms: in
 def iter_rendered_products_parallel(product_urls: list[str], workers: int = 20, timeout_ms: int = 18000):
     """Coleta paralela com um navegador e várias páginas; o banco fica serial na thread principal."""
     browser_exe = _find_browser_executable()
-    if not browser_exe:
-        raise RuntimeError("Microsoft Edge ou Google Chrome não foi encontrado.")
     workers = max(1, min(int(workers or 1), 20))
     out_q: queue.Queue = queue.Queue(maxsize=max(32, workers * 8))
     sentinel = object()
@@ -465,14 +472,26 @@ def iter_rendered_products_parallel(product_urls: list[str], workers: int = 20, 
                 browsers = []
                 contexts = []
                 for _ in range(browser_count):
-                    browser = await p.chromium.launch(
-                        executable_path=browser_exe, headless=True,
-                        args=[
-                            "--disable-gpu", "--no-first-run", "--disable-background-networking",
-                            "--disable-extensions", "--disable-sync", "--disable-component-update",
-                            "--disable-default-apps", "--disable-features=Translate,BackForwardCache"
+                    launch_kwargs = {
+                        "headless": True,
+                        "args": [
+                            "--disable-gpu",
+                            "--no-first-run",
+                            "--disable-background-networking",
+                            "--disable-extensions",
+                            "--disable-sync",
+                            "--disable-component-update",
+                            "--disable-default-apps",
+                            "--disable-features=Translate,BackForwardCache",
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
                         ],
-                    )
+                    }
+
+                    if browser_exe:
+                        launch_kwargs["executable_path"] = browser_exe
+
+                    browser = await p.chromium.launch(**launch_kwargs)
                     context = await browser.new_context(
                         user_agent=UA, locale="pt-BR", viewport={"width":1100,"height":760},
                         service_workers="block"
@@ -688,8 +707,6 @@ def _browser_discover_category(category_url:str,max_pages:int=250,delay_seconds:
     except Exception as e:
         raise RuntimeError("Playwright não está instalado. Reabra pelo launcher.") from e
     browser_exe=_find_browser_executable()
-    if not browser_exe:
-        raise RuntimeError("Microsoft Edge ou Google Chrome não foi encontrado.")
 
     expected=_category_expected_count(category_url)
     found=[]; seen=set(); page_counts={}
@@ -698,10 +715,22 @@ def _browser_discover_category(category_url:str,max_pages:int=250,delay_seconds:
     target_pages=min(max_pages,max(expected_pages,1))
 
     with sync_playwright() as p:
-        browser=p.chromium.launch(
-            executable_path=browser_exe,headless=True,
-            args=["--disable-gpu","--no-first-run","--disable-background-networking","--disable-extensions"]
-        )
+        launch_kwargs = {
+            "headless": True,
+            "args": [
+                "--disable-gpu",
+                "--no-first-run",
+                "--disable-background-networking",
+                "--disable-extensions",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        }
+
+        if browser_exe:
+            launch_kwargs["executable_path"] = browser_exe
+
+        browser = p.chromium.launch(**launch_kwargs)
         context=browser.new_context(user_agent=UA,locale="pt-BR",viewport={"width":1280,"height":820},service_workers="block")
         page=context.new_page()
 
